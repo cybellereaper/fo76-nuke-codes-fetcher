@@ -48,13 +48,14 @@ jobs:
 
     - name: Build and Run Go Application
       id: fetch-codes
+      env:
+        HTTP_PROXY: "socks5://127.0.0.1:9050"
+        HTTPS_PROXY: "socks5://127.0.0.1:9050"
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Set the token for Go to use
       run: |
-        # Set environment variables for Go to use the Tor proxy
-        export HTTP_PROXY="socks5://127.0.0.1:9050"
-        export HTTPS_PROXY="socks5://127.0.0.1:9050"
-        
         # Run the Go application (assume main.go is in the repository)
         go run main.go > codes.json || { echo 'Go application failed'; exit 1; }
+
 
     - name: Check if Nuke Codes are valid
       run: |
