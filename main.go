@@ -19,11 +19,11 @@ const (
 	targetURL     = "https://www.falloutbuilds.com/fo76/nuke-codes/"
 	userAgent     = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 	timeFormat    = "01/02/2006, 03:04:05 PM"
-	maxRetries    = 5               // Maximum number of retries
+	maxRetries    = 5                // Maximum number of retries
 	retryDelay    = 10 * time.Second // Delay between retries
 	workflowOwner = "cybellereaper"
 	workflowRepo  = "fo76-nuke-codes-fetcher"
-	workflowID    = "nuke-codes.yml" // The file name of the workflow you want to trigger
+	workflowID    = "nuke-codes" // The file name of the workflow you want to trigger
 )
 
 // NuclearCodes represents the structure of the nuke codes and related data
