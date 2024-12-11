@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	cloudflarebp "github.com/DaRealFreak/cloudflare-bp-go"
 	"github.com/PuerkitoBio/goquery"
+	"golang.org/x/net/proxy"
 )
 
 const (
@@ -35,14 +35,20 @@ type HttpC struct {
 }
 
 func NewClient() *HttpC {
+	// Setup Tor SOCKS5 proxy
+	dialer, err := proxy.SOCKS5("tcp", "127.0.0.1:9050", nil, proxy.Direct)
+	if err != nil {
+		log.Fatalf("Failed to create SOCKS5 proxy: %v", err)
+	}
+
+	// Create an HTTP client with the SOCKS5 proxy
 	return &HttpC{
 		Client: &http.Client{
 			Timeout:   10 * time.Second,
-			Transport: cloudflarebp.AddCloudFlareByPass(&http.Transport{}),
+			Transport: &http.Transport{Dial: dialer.Dial},
 		},
 	}
 }
-
 func fetchDocument() (*goquery.Document, error) {
 	client := NewClient()
 	req, err := http.NewRequest("GET", targetURL, nil)
