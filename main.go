@@ -230,6 +230,8 @@ func main() {
 				log.Printf("Failed to trigger GitHub Action: %v", err)
 			}
 
+			// Wait and retry
+			time.Sleep(retryDelay)
 			continue
 		}
 
