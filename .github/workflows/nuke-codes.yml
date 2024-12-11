@@ -22,25 +22,35 @@ jobs:
         go get github.com/PuerkitoBio/goquery
         go mod tidy
 
-    - name: Install Tor
+    - name: Install Tor and jq
       run: |
         sudo apt-get update
-        sudo apt-get install -y tor
+        sudo apt-get install -y tor jq
         sudo service tor start
 
     - name: Verify Tor is running
       run: |
+        # Verify Tor is running on the correct port (9050 for SOCKS5)
         ps aux | grep tor
         netstat -an | grep 9050
 
-    - name: Build and Run
+    - name: Wait for Tor to be ready
+      run: |
+        # Wait for Tor to be fully initialized and listening on port 9050
+        while ! nc -z 127.0.0.1 9050; do
+          echo "Waiting for Tor to be ready..."
+          sleep 1
+        done
+        echo "Tor is ready!"
+
+    - name: Build and Run Go Application
       id: fetch-codes
       run: |
         # Set environment variables for Go to use the Tor proxy
         export HTTP_PROXY="socks5://127.0.0.1:9050"
         export HTTPS_PROXY="socks5://127.0.0.1:9050"
         
-        # Save your Go code to main.go and run it
+        # Run the Go application (assume main.go is in the repository)
         go run main.go > codes.json
 
     - name: Send to Discord
@@ -53,7 +63,7 @@ jobs:
         
         CODES=$(cat codes.json)
         
-        # Extract values from JSON
+        # Extract values from JSON using jq
         ALPHA=$(echo $CODES | jq -r .alpha)
         BRAVO=$(echo $CODES | jq -r .bravo)
         CHARLIE=$(echo $CODES | jq -r .charlie)
@@ -93,7 +103,7 @@ jobs:
         EOF
         )
         
-        # Send to Discord webhook via Tor
+        # Send to Discord webhook via Tor using curl
         curl --proxy socks5://127.0.0.1:9050 \
              -H "Content-Type: application/json" \
              -d "$EMBED_JSON" \
