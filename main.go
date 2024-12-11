@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -13,6 +14,12 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
+const (
+	targetURL  = "https://www.falloutbuilds.com/fo76/nuke-codes/"
+	userAgent  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+	timeFormat = "01/02/2006, 03:04:05 PM"
+)
+
 type NuclearCodes struct {
 	Alpha       string `json:"alpha"`
 	Bravo       string `json:"bravo"`
@@ -22,112 +29,93 @@ type NuclearCodes struct {
 	LastUpdated string `json:"last_updated"`
 }
 
-func main() {
-	// URL of the website to scrape
-	url := "https://www.falloutbuilds.com/fo76/nuke-codes/"
-
-	// Create a custom HTTP client with a User-Agent header
+func fetchDocument() (*goquery.Document, error) {
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", targetURL, nil)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	// Set a User-Agent header (mimic a real browser)
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-
-	// Make the request
+	req.Header.Set("User-Agent", userAgent)
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("making request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Check if the response status is OK
-	if resp.StatusCode != 200 {
-		log.Fatalf("Error: Status code %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	// Parse the HTML response using goquery
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
+	return goquery.NewDocumentFromReader(resp.Body)
+}
 
-	// Initialize a struct to store nuke codes and valid time
+func extractNukeCodes(doc *goquery.Document) *NuclearCodes {
 	codes := &NuclearCodes{}
-
-	// Extract the nuke codes (ALPHA, BRAVO, CHARLIE)
-	doc.Find(".d-flex.flex-column.flex-lg-row.justify-content-lg-around.text-center.h3.mb-0").Each(func(i int, s *goquery.Selection) {
-		s.Find(".text-nowrap").Each(func(i int, codeSelection *goquery.Selection) {
-			// Get the text (nuke codes) inside the <div>
-			codeText := codeSelection.Text()
-
-			// Clean up the text (remove extra spaces and labels)
-			codeText = strings.TrimSpace(codeText)
-			if strings.Contains(codeText, "ALPHA") {
-				codes.Alpha = strings.ReplaceAll(codeText, "ALPHA", "")
-			}
-			if strings.Contains(codeText, "BRAVO") {
-				codes.Bravo = strings.ReplaceAll(codeText, "BRAVO", "")
-			}
-			if strings.Contains(codeText, "CHARLIE") {
-				codes.Charlie = strings.ReplaceAll(codeText, "CHARLIE", "")
-			}
-		})
+	doc.Find(".d-flex.flex-column.flex-lg-row.justify-content-lg-around.text-center.h3.mb-0 .text-nowrap").Each(func(_ int, s *goquery.Selection) {
+		codeText := strings.TrimSpace(s.Text())
+		switch {
+		case strings.Contains(codeText, "ALPHA"):
+			codes.Alpha = strings.ReplaceAll(codeText, "ALPHA", "")
+		case strings.Contains(codeText, "BRAVO"):
+			codes.Bravo = strings.ReplaceAll(codeText, "BRAVO", "")
+		case strings.Contains(codeText, "CHARLIE"):
+			codes.Charlie = strings.ReplaceAll(codeText, "CHARLIE", "")
+		}
 	})
+	return codes
+}
 
-	// Extract the valid time (from the 'Valid from' and 'to' part)
-	doc.Find(".small.mb-4").Each(func(i int, s *goquery.Selection) {
-		// Extract "Valid from" and "Valid to" by finding <strong> elements inside
-		s.Find("strong").Each(func(i int, strongSelection *goquery.Selection) {
-			// Get the text inside the <strong> element
-			strongText := strings.TrimSpace(strongSelection.Text())
-
-			// Check for valid time range: "Valid from" and "Valid to"
-			if i == 0 {
-				codes.ValidFrom = strongText
-			} else if i == 1 {
-				codes.ValidTo = strongText
+func extractValidityTimes(doc *goquery.Document, codes *NuclearCodes) {
+	doc.Find(".small.mb-4").Each(func(_ int, s *goquery.Selection) {
+		s.Find("strong").Each(func(i int, strong *goquery.Selection) {
+			text := strings.TrimSpace(strong.Text())
+			switch i {
+			case 0:
+				codes.ValidFrom = text
+			case 1:
+				codes.ValidTo = text
 			}
 		})
 
-		// Extract the "Last updated" time from the text (after "Last updated: ...")
 		if strings.Contains(s.Text(), "Last updated:") {
-			lastUpdatedText := strings.TrimSpace(s.Text())
-			// Use a regular expression to extract the timestamp from the JavaScript code
-			re := regexp.MustCompile(`new Date\((\d+)\*1000\)`)
-			matches := re.FindStringSubmatch(lastUpdatedText)
-			if len(matches) > 1 {
-				// Convert the extracted timestamp to a time object
-				timestamp := matches[1]
+			if timestamp := extractTimestamp(s.Text()); timestamp != "" {
 				if ts, err := convertTimestampToTime(timestamp); err == nil {
 					codes.LastUpdated = ts
-				} else {
-					log.Println("Error converting timestamp:", err)
 				}
 			}
 		}
 	})
-
-	// Create a new JSON encoder and print the result to standard output
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ") // For pretty printing the JSON output
-	if err := enc.Encode(codes); err != nil {
-		log.Fatal(err)
-	}
 }
 
-// convertTimestampToTime converts a Unix timestamp (in seconds) to a readable date.
+func extractTimestamp(text string) string {
+	re := regexp.MustCompile(`new Date\((\d+)\*1000\)`)
+	if matches := re.FindStringSubmatch(text); len(matches) > 1 {
+		return matches[1]
+	}
+	return ""
+}
+
 func convertTimestampToTime(timestamp string) (string, error) {
-	// Convert the timestamp string to an integer
 	ts, err := strconv.ParseInt(timestamp, 10, 64)
 	if err != nil {
 		return "", err
 	}
+	return time.Unix(ts, 0).Format(timeFormat), nil
+}
 
-	// Convert the Unix timestamp to a time.Time object
-	t := time.Unix(ts, 0)
-	// Format the time as a string in a human-readable format
-	return t.Format("01/02/2006, 03:04:05 PM"), nil
+func main() {
+	doc, err := fetchDocument()
+	if err != nil {
+		log.Fatalf("Failed to fetch document: %v", err)
+	}
+
+	codes := extractNukeCodes(doc)
+	extractValidityTimes(doc, codes)
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(codes); err != nil {
+		log.Fatalf("Failed to encode JSON: %v", err)
+	}
 }
