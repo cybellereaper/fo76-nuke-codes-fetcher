@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	cloudflarebp "github.com/DaRealFreak/cloudflare-bp-go"
 	"github.com/PuerkitoBio/goquery"
 )
 
@@ -29,15 +30,28 @@ type NuclearCodes struct {
 	LastUpdated string `json:"last_updated"`
 }
 
+type HttpC struct {
+	Client *http.Client
+}
+
+func NewClient() *HttpC {
+	return &HttpC{
+		Client: &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: cloudflarebp.AddCloudFlareByPass(&http.Transport{}),
+		},
+	}
+}
+
 func fetchDocument() (*goquery.Document, error) {
-	client := &http.Client{}
+	client := NewClient()
 	req, err := http.NewRequest("GET", targetURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
 	req.Header.Set("User-Agent", userAgent)
-	resp, err := client.Do(req)
+	resp, err := client.Client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("making request: %w", err)
 	}
