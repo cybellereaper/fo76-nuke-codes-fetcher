@@ -16,11 +16,14 @@ import (
 )
 
 const (
-	targetURL  = "https://www.falloutbuilds.com/fo76/nuke-codes/"
-	userAgent  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-	timeFormat = "01/02/2006, 03:04:05 PM"
-	maxRetries = 15               // Maximum number of retries
-	retryDelay = 10 * time.Second // Delay between retries
+	targetURL     = "https://www.falloutbuilds.com/fo76/nuke-codes/"
+	userAgent     = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+	timeFormat    = "01/02/2006, 03:04:05 PM"
+	maxRetries    = 15               // Maximum number of retries
+	retryDelay    = 10 * time.Second // Delay between retries
+	workflowOwner = "cybellereaper"
+	workflowRepo  = "fo76-nuke-codes-fetcher"
+	workflowID    = "nuke-codes.yml" // The file name of the workflow you want to trigger
 )
 
 // NuclearCodes represents the structure of the nuke codes and related data
@@ -157,16 +160,82 @@ func convertTimestampToTime(timestamp string) (string, error) {
 	return time.Unix(ts, 0).Format(timeFormat), nil
 }
 
-func main() {
-	// Fetch the document with retry logic
-	doc, err := fetchDocument()
-	if err != nil {
-		log.Fatalf("Failed to fetch document: %v", err)
+// checkForEmptyFields checks if any of the crucial fields are empty
+func checkForEmptyFields(codes *NuclearCodes) bool {
+	return codes.Alpha == "" || codes.Bravo == "" || codes.Charlie == "" || codes.ValidFrom == "" || codes.ValidTo == "" || codes.LastUpdated == ""
+}
+
+// triggerGitHubAction triggers a new GitHub Actions workflow run
+func triggerGitHubAction() error {
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		return fmt.Errorf("GitHub token is not set in environment")
 	}
 
-	// Extract nuke codes and validity times
-	codes := extractNukeCodes(doc)
-	extractValidityTimes(doc, codes)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/actions/workflows/%s/dispatches", workflowOwner, workflowRepo, workflowID)
+	data := map[string]interface{}{
+		"ref": "main", // Or use another branch or tag
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request data: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, strings.NewReader(string(jsonData)))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to trigger GitHub Action: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to trigger GitHub Action. Status: %d", resp.StatusCode)
+	}
+
+	log.Println("GitHub Action triggered successfully.")
+	return nil
+}
+
+func main() {
+	var codes *NuclearCodes
+	var doc *goquery.Document
+	var err error
+
+	// Fetch the document with retry logic
+	for i := 0; i < maxRetries; i++ {
+		doc, err = fetchDocument()
+		if err != nil {
+			log.Fatalf("Failed to fetch document: %v", err)
+		}
+
+		// Extract nuke codes and validity times
+		codes = extractNukeCodes(doc)
+		extractValidityTimes(doc, codes)
+
+		// Check if any crucial field is empty
+		if checkForEmptyFields(codes) {
+			log.Println("Empty field detected, forcing retry and triggering GitHub Action...")
+
+			// Trigger GitHub action to retry the job
+			if err := triggerGitHubAction(); err != nil {
+				log.Printf("Failed to trigger GitHub Action: %v", err)
+			}
+
+			continue
+		}
+
+		// If all values are populated, break out of the retry loop
+		break
+	}
 
 	// Print the extracted data as formatted JSON
 	enc := json.NewEncoder(os.Stdout)
