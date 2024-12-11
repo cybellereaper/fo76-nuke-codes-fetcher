@@ -19,11 +19,11 @@ const (
 	targetURL     = "https://www.falloutbuilds.com/fo76/nuke-codes/"
 	userAgent     = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 	timeFormat    = "01/02/2006, 03:04:05 PM"
-	maxRetries    = 15               // Maximum number of retries
+	maxRetries    = 5               // Maximum number of retries
 	retryDelay    = 10 * time.Second // Delay between retries
 	workflowOwner = "cybellereaper"
 	workflowRepo  = "fo76-nuke-codes-fetcher"
-	workflowID    = "nuke-codes" // The file name of the workflow you want to trigger
+	workflowID    = "nuke-codes.yml" // The file name of the workflow you want to trigger
 )
 
 // NuclearCodes represents the structure of the nuke codes and related data
@@ -214,7 +214,18 @@ func main() {
 	for i := 0; i < maxRetries; i++ {
 		doc, err = fetchDocument()
 		if err != nil {
-			log.Fatalf("Failed to fetch document: %v", err)
+			log.Printf("Error fetching document on attempt %d: %v", i+1, err)
+
+			// Trigger GitHub Action on fatal error (e.g., document fetch failure)
+			if triggerErr := triggerGitHubAction(); triggerErr != nil {
+				log.Printf("Failed to trigger GitHub Action: %v", triggerErr)
+			} else {
+				log.Println("GitHub Action triggered successfully due to fetch failure.")
+			}
+
+			// Wait and retry
+			time.Sleep(retryDelay)
+			continue
 		}
 
 		// Extract nuke codes and validity times
@@ -228,6 +239,8 @@ func main() {
 			// Trigger GitHub action to retry the job
 			if err := triggerGitHubAction(); err != nil {
 				log.Printf("Failed to trigger GitHub Action: %v", err)
+			} else {
+				log.Println("GitHub Action triggered successfully due to missing fields.")
 			}
 
 			// Wait and retry
@@ -236,7 +249,23 @@ func main() {
 		}
 
 		// If all values are populated, break out of the retry loop
+		log.Println("All fields populated. Proceeding with final data...")
 		break
+	}
+
+	// If all retries are exhausted and we still encountered errors, trigger GitHub Action on fatal error
+	if err != nil && err.Error() != "" {
+		log.Printf("Fatal error encountered after retries: %v. Triggering GitHub Action to restart the job...", err)
+
+		// Trigger GitHub action on fatal error
+		if err := triggerGitHubAction(); err != nil {
+			log.Printf("Failed to trigger GitHub Action: %v", err)
+		} else {
+			log.Println("GitHub Action triggered successfully to restart the job.")
+		}
+
+		// Exit after triggering the action
+		os.Exit(1)
 	}
 
 	// Print the extracted data as formatted JSON
