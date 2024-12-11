@@ -23,7 +23,7 @@ const (
 	retryDelay    = 10 * time.Second // Delay between retries
 	workflowOwner = "cybellereaper"
 	workflowRepo  = "fo76-nuke-codes-fetcher"
-	workflowID    = "nuke-codes.yml" // The file name of the workflow you want to trigger
+	workflowID    = "nuke-codes" // The file name of the workflow you want to trigger
 )
 
 // NuclearCodes represents the structure of the nuke codes and related data
