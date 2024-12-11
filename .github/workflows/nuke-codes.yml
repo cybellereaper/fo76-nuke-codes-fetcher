@@ -10,7 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout Repository
+      uses: actions/checkout@v3
 
     - name: Set up Go
       uses: actions/setup-go@v4
@@ -51,16 +52,30 @@ jobs:
         export HTTPS_PROXY="socks5://127.0.0.1:9050"
         
         # Run the Go application (assume main.go is in the repository)
-        go run main.go > codes.json
+        go run main.go > codes.json || { echo 'Go application failed'; exit 1; }
+
+    - name: Check if Nuke Codes are valid
+      run: |
+        CODES=$(cat codes.json)
+        
+        # Ensure all required fields are present
+        if echo "$CODES" | jq -e '.alpha' > /dev/null && \
+           echo "$CODES" | jq -e '.bravo' > /dev/null && \
+           echo "$CODES" | jq -e '.charlie' > /dev/null && \
+           echo "$CODES" | jq -e '.valid_from' > /dev/null && \
+           echo "$CODES" | jq -e '.valid_to' > /dev/null && \
+           echo "$CODES" | jq -e '.last_updated' > /dev/null; then
+          echo "Nuke codes are valid."
+        else
+          echo "Error: Missing fields in nuke codes."
+          exit 1
+        fi
 
     - name: Send to Discord
       env:
         DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Adding GITHUB_TOKEN explicitly
       run: |
-        # Set environment variables for curl to use the Tor proxy
-        export HTTP_PROXY="socks5://127.0.0.1:9050"
-        export HTTPS_PROXY="socks5://127.0.0.1:9050"
-        
         CODES=$(cat codes.json)
         
         # Extract values from JSON using jq
@@ -107,4 +122,4 @@ jobs:
         curl --proxy socks5://127.0.0.1:9050 \
              -H "Content-Type: application/json" \
              -d "$EMBED_JSON" \
-             $DISCORD_WEBHOOK
+             $DISCORD_WEBHOOK || { echo 'Failed to send to Discord'; exit 1; }
