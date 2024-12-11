@@ -1,110 +1,28 @@
-name: Fallout 76 Nuke Codes Discord Update
+name: Fetch Fallout 76 Nuke Codes
 
 on:
-  schedule:
-    - cron: '0 */6 * * *'  # Runs every 6 hours
-  workflow_dispatch:  # Allows manual trigger
+  push:
+    branches:
+      - main
 
 jobs:
-  fetch-and-send:
+  build:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '1.23.4'
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.23.4'
 
-    - name: Install dependencies
-      run: |
-        go get github.com/PuerkitoBio/goquery
-        go mod tidy
+      - name: Install dependencies
+        run: go mod tidy
 
-    - name: Install Tor and jq
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y tor jq
-        sudo service tor start
-
-    - name: Verify Tor is running
-      run: |
-        # Verify Tor is running on the correct port (9050 for SOCKS5)
-        ps aux | grep tor
-        netstat -an | grep 9050
-
-    - name: Wait for Tor to be ready
-      run: |
-        # Wait for Tor to be fully initialized and listening on port 9050
-        while ! nc -z 127.0.0.1 9050; do
-          echo "Waiting for Tor to be ready..."
-          sleep 1
-        done
-        echo "Tor is ready!"
-
-    - name: Build and Run Go Application
-      id: fetch-codes
-      run: |
-        # Set environment variables for Go to use the Tor proxy
-        export HTTP_PROXY="socks5://127.0.0.1:9050"
-        export HTTPS_PROXY="socks5://127.0.0.1:9050"
-        
-        # Run the Go application (assume main.go is in the repository)
-        go run main.go > codes.json
-
-    - name: Send to Discord
-      env:
-        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-      run: |
-        # Set environment variables for curl to use the Tor proxy
-        export HTTP_PROXY="socks5://127.0.0.1:9050"
-        export HTTPS_PROXY="socks5://127.0.0.1:9050"
-        
-        CODES=$(cat codes.json)
-        
-        # Extract values from JSON using jq
-        ALPHA=$(echo $CODES | jq -r .alpha)
-        BRAVO=$(echo $CODES | jq -r .bravo)
-        CHARLIE=$(echo $CODES | jq -r .charlie)
-        VALID_FROM=$(echo $CODES | jq -r .valid_from)
-        VALID_TO=$(echo $CODES | jq -r .valid_to)
-        LAST_UPDATED=$(echo $CODES | jq -r .last_updated)
-        
-        # Create Discord embed JSON
-        EMBED_JSON=$(cat << EOF
-        {
-          "embeds": [{
-            "title": "Fallout 76 Nuclear Codes Update",
-            "color": 15158332,
-            "fields": [
-              {
-                "name": "Alpha Silo",
-                "value": "\`$ALPHA\`",
-                "inline": true
-              },
-              {
-                "name": "Bravo Silo",
-                "value": "\`$BRAVO\`",
-                "inline": true
-              },
-              {
-                "name": "Charlie Silo",
-                "value": "\`$CHARLIE\`",
-                "inline": true
-              }
-            ],
-            "footer": {
-              "text": "Valid from $VALID_FROM to $VALID_TO • Last updated: $LAST_UPDATED"
-            },
-            "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-          }]
-        }
-        EOF
-        )
-        
-        # Send to Discord webhook via Tor using curl
-        curl --proxy socks5://127.0.0.1:9050 \
-             -H "Content-Type: application/json" \
-             -d "$EMBED_JSON" \
-             $DISCORD_WEBHOOK
+      - name: Run the Go program
+        env:
+          TARGET_URL: ${{ secrets.TARGET_URL }} # Use the secret from GitHub Actions
+        run: |
+          go run main.go
