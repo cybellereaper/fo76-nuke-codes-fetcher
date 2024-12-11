@@ -19,7 +19,7 @@ const (
 	targetURL  = "https://www.falloutbuilds.com/fo76/nuke-codes/"
 	userAgent  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 	timeFormat = "01/02/2006, 03:04:05 PM"
-	maxRetries = 5                // Maximum number of retries
+	maxRetries = 15               // Maximum number of retries
 	retryDelay = 10 * time.Second // Delay between retries
 )
 
