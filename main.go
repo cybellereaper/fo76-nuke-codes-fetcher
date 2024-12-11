@@ -16,6 +16,7 @@ import (
 )
 
 const (
+	targetURL  = "https://www.falloutbuilds.com/fo76/nuke-codes/"
 	userAgent  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 	timeFormat = "01/02/2006, 03:04:05 PM"
 	maxRetries = 5                // Maximum number of retries
@@ -55,7 +56,7 @@ func NewClient() *HttpC {
 }
 
 // fetchDocument attempts to fetch the webpage and returns a parsed GoQuery document with retry logic
-func fetchDocument(targetURL string) (*goquery.Document, error) {
+func fetchDocument() (*goquery.Document, error) {
 	client := NewClient()
 
 	var doc *goquery.Document
@@ -157,14 +158,8 @@ func convertTimestampToTime(timestamp string) (string, error) {
 }
 
 func main() {
-	// Fetch the target URL from environment variables
-	targetURL := os.Getenv("TARGET_URL")
-	if targetURL == "" {
-		log.Fatalf("TARGET_URL is not set")
-	}
-
 	// Fetch the document with retry logic
-	doc, err := fetchDocument(targetURL)
+	doc, err := fetchDocument()
 	if err != nil {
 		log.Fatalf("Failed to fetch document: %v", err)
 	}
